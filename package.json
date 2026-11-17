@@ -1,0 +1,26 @@
+{
+  "name": "mini-project-manager",
+  "version": "1.0.0",
+  "description": "Mini Project Manager - Monorepo for Full Stack Web Application",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build": "npm run build:backend && npm run build:frontend",
+    "install:frontend": "npm --prefix frontend install",
+    "install:backend": "npm --prefix backend install",
+    "install:all": "npm run install:backend && npm run install:frontend"
+  },
+  "keywords": [
+    "nextjs",
+    "express",
+    "typescript",
+    "postgresql",
+    "prisma",
+    "redux-toolkit"
+  ],
+  "author": "",
+  "license": "ISC"
+}
