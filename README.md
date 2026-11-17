@@ -1,192 +1,673 @@
-# Mini Project Manager
+# Mini Project Manager — Enterprise SaaS Platform
 
-A modern, scalable, full-stack web application designed for managing projects and their associated tasks with granular control, built with clean architecture principles.
-
----
-
-## 📌 Project Overview
-
-**Mini Project Manager** is developed as a modular monorepo containing independent frontend and backend applications. The platform allows authenticated users to create and manage their own projects and organize tasks under each project with statuses (`TODO`, `IN_PROGRESS`, `DONE`).
-
-### Key Principles
-- **Separation of Concerns:** Clear boundary between Next.js frontend client/server layers and Express.js REST API.
-- **Strict Typing:** End-to-end TypeScript throughout frontend and backend.
-- **Relational Integrity:** PostgreSQL database managed with Prisma ORM, utilizing cascading deletions, foreign key constraints, and performance indexes.
-- **Centralized State & Caching:** Redux Toolkit with RTK Query for efficient server-state caching and synchronization.
-- **Resilient Error Handling:** Centralized Express middleware and Zod schema validation.
-- **Security-First Auth:** JWT stored exclusively in HttpOnly cookies — never in localStorage or JSON response bodies.
-- **Strict Resource Ownership:** Backend authorization verifies user ownership on every database operation; users can never access, edit, or delete another user's projects.
+A modern, high-performance, full-stack Project and Task Management platform built with clean architecture, strict TypeScript types, PostgreSQL relational integrity, and a premium Indigo SaaS design system.
 
 ---
 
-## ✅ Implementation Progress
+## 📌 Executive Summary
 
-| Phase | Status | Description |
-| :--- | :--- | :--- |
-| **Phase 1** | ✅ Complete | Project Initialization & Architecture Setup |
-| **Phase 2** | ✅ Complete | Authentication & Authorization (JWT HttpOnly Cookies) |
-| **Phase 3** | ✅ Complete | Project Management (Complete CRUD, Ownership Isolation & UI) |
-| **Phase 4** | ✅ Complete | Task Management (Complete CRUD, Status Transitions, Due Dates & UI) |
-| **Phase 5** | ✅ Complete | Complete Application Integration & UI Development (AppLayout, Dashboard API, Toasts, Responsive SaaS Shell) |
+**Mini Project Manager** is an enterprise-grade project workflow web application structured as a monorepo containing an independent **Next.js 15** frontend and an **Express.js** REST API backend. The system enables authenticated users to organize projects, create granular tasks with workflow states (`TODO`, `IN_PROGRESS`, `DONE`), schedule deadlines, track live completion metrics, and visualize team progress through an aggregated real-time dashboard.
 
----
-
-## 🛠️ Technology Stack
-
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend** | [Next.js 15](https://nextjs.org/) (App Router, React 18), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/), [Redux Toolkit](https://redux-toolkit.js.org/), [RTK Query](https://redux-toolkit.js.org/rtk-query/overview), [Lucide React](https://lucide.dev/) |
-| **Backend** | [Node.js](https://nodejs.org/), [Express.js](https://expressjs.com/), [TypeScript](https://www.typescriptlang.org/), [Zod](https://zod.dev/), [bcrypt](https://github.com/kelektiv/node.bcrypt.js), [jsonwebtoken](https://github.com/auth0/node-jsonwebtoken), [cookie-parser](https://github.com/expressjs/cookie-parser) |
-| **Database & ORM** | [PostgreSQL](https://www.postgresql.org/), [Prisma ORM](https://www.prisma.io/) |
-| **Architecture** | Monorepo, RESTful API, Feature-based frontend modules |
-| **Package Manager** | `npm` |
+### Core Architectural Principles
+- **Strict User Isolation & Zero-Trust Ownership:** Data access is strictly scoped to the authenticated user. Every database query enforces user ownership at the ORM layer.
+- **Defense-in-Depth Security:** Stateless JWT tokens stored strictly in encrypted `HttpOnly` cookies, preventing XSS and script-based token exfiltration.
+- **Relational Integrity:** PostgreSQL database managed via Prisma ORM with foreign-key constraints, cascading deletions, and performance indexes.
+- **Centralized State & Automated Caching:** Redux Toolkit with RTK Query managing optimistic UI updates, tag invalidations (`Auth`, `Project`, `Task`, `Dashboard`), and normalized caching.
+- **Enterprise SaaS Design:** Polished Indigo visual identity, responsive layouts, micro-interactions, modal forms, and real-time dashboard metrics.
 
 ---
 
-## 🏗️ Project Architecture & Folder Structure
+## 🔐 JWT Authentication & Security Architecture
+
+The application implements a robust, stateless **JSON Web Token (JWT)** authentication system adhering to OWASP web security standards.
+
+### 1. Why JWT & HttpOnly Cookies?
+
+Traditional single-page applications often store tokens in `localStorage` or `sessionStorage`. This introduces severe vulnerabilities:
+- **XSS Vulnerability:** Any Cross-Site Scripting (XSS) vulnerability or rogue third-party dependency can access `window.localStorage` and steal user session tokens.
+- **Token Invalidation:** Local storage tokens cannot be safely invalidated from the server side without complex token blacklists.
+
+**Our Implementation:**
+Tokens are issued by the backend upon successful credential verification and transmitted inside an **`HttpOnly` cookie** named `token`.
+- **`HttpOnly: true`**: JavaScript running in the browser cannot read, inspect, or modify the cookie (`document.cookie` returns nothing regarding auth).
+- **`SameSite: lax` (or `strict` in production)**: Protects against Cross-Site Request Forgery (CSRF) by preventing the browser from attaching the cookie to cross-origin requests.
+- **`Secure: true` (in production)**: Enforces transmission strictly over TLS/HTTPS encrypted connections.
+- **`Max-Age: 7 days`**: Matches the JWT expiration window.
 
 ```
-mini-project-manager/
+┌─────────────────┐                                      ┌─────────────────┐
+│     Client      │                                      │  Express API    │
+│  (Next.js App)  │                                      │    (Backend)    │
+└────────┬────────┘                                      └────────┬────────┘
+         │                                                        │
+         │  1. POST /api/auth/login { email, password }          │
+         │───────────────────────────────────────────────────────>│
+         │                                                        │ 2. Find user &
+         │                                                        │    verify bcrypt hash
+         │                                                        │ 3. Sign JWT with
+         │                                                        │    JWT_SECRET & {id, email}
+         │  4. Set-Cookie: token=<jwt>; HttpOnly; SameSite; Path  │
+         │     Response: 200 OK { success: true, user: {...} }    │
+         │<───────────────────────────────────────────────────────│
+         │                                                        │
+         │  5. GET /api/projects (Cookie sent automatically)      │
+         │───────────────────────────────────────────────────────>│
+         │                                                        │ 6. auth.middleware reads
+         │                                                        │    req.cookies.token
+         │                                                        │ 7. jwt.verify(token, secret)
+         │                                                        │ 8. Attach req.user = user
+         │  9. Response: 200 OK { projects: [...] }               │
+         │<───────────────────────────────────────────────────────│
+```
+
+### 2. Token Structure & Payload
+
+The JWT is signed using the HMAC-SHA256 algorithm with a cryptographically secure `JWT_SECRET`. The payload contains minimal non-sensitive identity claims:
+
+```json
+{
+  "id": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
+  "email": "user@example.com",
+  "iat": 1794896400,
+  "exp": 1795501200
+}
+```
+
+- **`id`**: Unique UUID of the user in PostgreSQL. Used for zero-trust query filtering.
+- **`email`**: User's verified email address.
+- **`iat`**: Issued-at UNIX timestamp.
+- **`exp`**: Expiration UNIX timestamp (configured via `JWT_EXPIRES_IN`, defaulting to `7d`).
+
+### 3. Password Security with bcrypt
+
+- Passwords are never stored in plaintext.
+- During registration (`POST /api/auth/register`), passwords are salted and hashed using **`bcrypt`** with **10 salt rounds**.
+- During login (`POST /api/auth/login`), the entered password is compared against the database hash using constant-time evaluation (`bcrypt.compare`) to mitigate timing attacks.
+
+### 4. Authentication Middleware (`auth.middleware.ts`)
+
+Every protected API route executes the `authenticateToken` middleware:
+1. **Extraction:** Retrieves the token from `req.cookies.token` (or fallback `Authorization: Bearer <token>` header for external API consumers).
+2. **Presence Verification:** Returns `401 Unauthorized` if no token is found.
+3. **Cryptographic Verification:** Verifies token integrity and expiration using `jwt.verify(token, env.JWT_SECRET)`. If tampered with or expired, returns `401 Unauthorized`.
+4. **Database Resolution:** Fetches the active user profile (`id`, `name`, `email`, `createdAt`) from PostgreSQL using Prisma. If the user was deleted, access is denied.
+5. **Context Augmentation:** Injects `req.user` into the Express `Request` object for downstream controllers and services.
+
+### 5. Session Lifecycle Management
+
+- **Login (`POST /api/auth/login`):** Validates credentials, issues JWT, sets `Set-Cookie: token=...`, returns user object to Redux.
+- **Session Restoration (`GET /api/auth/me`):** When the browser loads or refreshes, `AuthInitializer` dispatches `/api/auth/me`. If the cookie is valid, Redux restores user state seamlessly without requiring re-login.
+- **Logout (`POST /api/auth/logout`):** The server issues a cookie-clearing header (`res.clearCookie('token')`), destroying the session. Redux state is purged.
+
+---
+
+## 📡 REST API Endpoint Reference
+
+The backend provides a comprehensive, RESTful API organized by functional modules. All API routes are prefixed with `/api`.
+
+### Summary Table
+
+| Method | Endpoint | Description | Auth Required | Success Status |
+| :--- | :--- | :--- | :---: | :---: |
+| **AUTH** | | | | |
+| `POST` | `/api/auth/register` | Register a new user account & set session cookie | ❌ Public | `201 Created` |
+| `POST` | `/api/auth/login` | Authenticate user credentials & set session cookie | ❌ Public | `200 OK` |
+| `POST` | `/api/auth/logout` | Clear session cookie & terminate authentication | ❌ Public | `200 OK` |
+| `GET` | `/api/auth/me` | Retrieve active authenticated session & user profile | ✅ Protected | `200 OK` |
+| **PROJECTS** | | | | |
+| `POST` | `/api/projects` | Create a new project workspace for user | ✅ Protected | `201 Created` |
+| `GET` | `/api/projects` | Retrieve all projects owned by the user (with task counts) | ✅ Protected | `200 OK` |
+| `GET` | `/api/projects/:id` | Retrieve single project details with all child tasks | ✅ Protected | `200 OK` |
+| `PATCH` | `/api/projects/:id` | Update project title or description | ✅ Protected | `200 OK` |
+| `DELETE` | `/api/projects/:id` | Delete project and cascade-delete all its tasks | ✅ Protected | `200 OK` |
+| **TASKS** | | | | |
+| `POST` | `/api/projects/:projectId/tasks` | Create a new task within a specified project | ✅ Protected | `201 Created` |
+| `GET` | `/api/projects/:projectId/tasks` | Retrieve project tasks with filtering & sorting | ✅ Protected | `200 OK` |
+| `GET` | `/api/tasks/:id` | Retrieve individual task details by task ID | ✅ Protected | `200 OK` |
+| `PATCH` | `/api/tasks/:id` | Update task title, description, status, or due date | ✅ Protected | `200 OK` |
+| `DELETE` | `/api/tasks/:id` | Permanently delete a task | ✅ Protected | `200 OK` |
+| **DASHBOARD** | | | | |
+| `GET` | `/api/dashboard` | Aggregated analytics, KPIs, completion rate & recent items | ✅ Protected | `200 OK` |
+| **SYSTEM** | | | | |
+| `GET` | `/api/health` | Health check, PostgreSQL ping & uptime monitoring | ❌ Public | `200 OK` |
+
+---
+
+### Detailed Endpoint Documentation
+
+#### 1. Authentication Endpoints (`/api/auth`)
+
+##### `POST /api/auth/register`
+Creates a new user record, hashes password, signs JWT, and sets `token` HttpOnly cookie.
+
+- **Request Body:**
+  ```json
+  {
+    "name": "Alex Morgan",
+    "email": "alex@example.com",
+    "password": "SecurePassword123!"
+  }
+  ```
+- **Validation Rules (Zod):**
+  - `name`: String, minimum 2 characters.
+  - `email`: Valid email format, normalized to lowercase.
+  - `password`: String, minimum 6 characters.
+- **Success Response (`201 Created`):**
+  ```json
+  {
+    "success": true,
+    "message": "User registered successfully",
+    "user": {
+      "id": "c4d3b6f1-7a2e-4e31-89d5-1c58f0b72c91",
+      "name": "Alex Morgan",
+      "email": "alex@example.com",
+      "createdAt": "2026-11-17T10:00:00.000Z"
+    }
+  }
+  ```
+- **Error Responses:**
+  - `400 Bad Request`: Validation failure.
+  - `409 Conflict`: Email already registered.
+
+---
+
+##### `POST /api/auth/login`
+Verifies email and password, signs JWT, and sets `token` HttpOnly cookie.
+
+- **Request Body:**
+  ```json
+  {
+    "email": "alex@example.com",
+    "password": "SecurePassword123!"
+  }
+  ```
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Login successful",
+    "user": {
+      "id": "c4d3b6f1-7a2e-4e31-89d5-1c58f0b72c91",
+      "name": "Alex Morgan",
+      "email": "alex@example.com",
+      "createdAt": "2026-11-17T10:00:00.000Z"
+    }
+  }
+  ```
+- **Error Responses:**
+  - `400 Bad Request`: Missing credentials.
+  - `401 Unauthorized`: Invalid email or incorrect password.
+
+---
+
+##### `POST /api/auth/logout`
+Destroys the session by clearing the `token` cookie.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Logged out successfully"
+  }
+  ```
+
+---
+
+##### `GET /api/auth/me`
+Restores the user session from the incoming `token` cookie. Protected by `authenticateToken`.
+
+- **Headers:** `Cookie: token=<jwt>`
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "user": {
+      "id": "c4d3b6f1-7a2e-4e31-89d5-1c58f0b72c91",
+      "name": "Alex Morgan",
+      "email": "alex@example.com",
+      "createdAt": "2026-11-17T10:00:00.000Z"
+    }
+  }
+  ```
+- **Error Responses:**
+  - `401 Unauthorized`: Missing, expired, or invalid cookie.
+
+---
+
+#### 2. Project Management Endpoints (`/api/projects`)
+
+All project endpoints require valid authentication. Data isolation guarantees users can only access their own projects.
+
+##### `POST /api/projects`
+Creates a new project owned by the authenticated user.
+
+- **Request Body:**
+  ```json
+  {
+    "title": "Mobile App Redesign",
+    "description": "Complete UI/UX overhaul of iOS and Android applications"
+  }
+  ```
+- **Success Response (`201 Created`):**
+  ```json
+  {
+    "success": true,
+    "message": "Project created successfully",
+    "project": {
+      "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "userId": "c4d3b6f1-7a2e-4e31-89d5-1c58f0b72c91",
+      "title": "Mobile App Redesign",
+      "description": "Complete UI/UX overhaul of iOS and Android applications",
+      "createdAt": "2026-11-17T10:15:00.000Z",
+      "updatedAt": "2026-11-17T10:15:00.000Z",
+      "_count": { "tasks": 0 }
+    }
+  }
+  ```
+
+---
+
+##### `GET /api/projects`
+Retrieves all projects owned by the authenticated user, ordered by `createdAt DESC`. Includes aggregate count of associated tasks.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "projects": [
+      {
+        "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+        "userId": "c4d3b6f1-7a2e-4e31-89d5-1c58f0b72c91",
+        "title": "Mobile App Redesign",
+        "description": "Complete UI/UX overhaul of iOS and Android applications",
+        "createdAt": "2026-11-17T10:15:00.000Z",
+        "updatedAt": "2026-11-17T10:15:00.000Z",
+        "_count": { "tasks": 4 }
+      }
+    ]
+  }
+  ```
+
+---
+
+##### `GET /api/projects/:id`
+Retrieves project details by ID, along with its complete list of tasks and task counts grouped by status.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "project": {
+      "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "userId": "c4d3b6f1-7a2e-4e31-89d5-1c58f0b72c91",
+      "title": "Mobile App Redesign",
+      "description": "Complete UI/UX overhaul of iOS and Android applications",
+      "createdAt": "2026-11-17T10:15:00.000Z",
+      "updatedAt": "2026-11-17T10:15:00.000Z",
+      "tasks": [
+        {
+          "id": "t1a2b3c4-0000-0000-0000-111122223333",
+          "projectId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+          "title": "Design Figma Wireframes",
+          "description": "Create high-fidelity mockups for navigation flow",
+          "status": "DONE",
+          "dueDate": "2026-11-20T00:00:00.000Z",
+          "createdAt": "2026-11-17T10:20:00.000Z",
+          "updatedAt": "2026-11-17T10:30:00.000Z"
+        }
+      ],
+      "_count": { "tasks": 1 }
+    }
+  }
+  ```
+- **Error Responses:**
+  - `404 Not Found`: Project does not exist or belongs to another user.
+
+---
+
+##### `PATCH /api/projects/:id`
+Updates title or description of a user's project.
+
+- **Request Body (Partial):**
+  ```json
+  {
+    "title": "Mobile App Redesign v2",
+    "description": "Updated roadmap for 2027 delivery"
+  }
+  ```
+- **Success Response (`200 OK`):** Returns the updated project object.
+
+---
+
+##### `DELETE /api/projects/:id`
+Deletes the project. Cascades to automatically delete all associated tasks via PostgreSQL foreign key constraint.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Project and associated tasks deleted successfully"
+  }
+  ```
+
+---
+
+#### 3. Task Management Endpoints (`/api/projects/:projectId/tasks` & `/api/tasks/:id`)
+
+Tasks belong to a specific project. All task operations enforce that the parent project belongs to the authenticated user.
+
+##### `POST /api/projects/:projectId/tasks`
+Creates a task inside the specified project.
+
+- **URL Parameter:** `projectId` (UUID)
+- **Request Body:**
+  ```json
+  {
+    "title": "Implement OAuth2 Login Flow",
+    "description": "Add Google and GitHub social login buttons",
+    "status": "TODO",
+    "dueDate": "2026-11-25T18:00:00.000Z"
+  }
+  ```
+- **Task Statuses Allowed:** `TODO` (default), `IN_PROGRESS`, `DONE`.
+- **Success Response (`201 Created`):**
+  ```json
+  {
+    "success": true,
+    "message": "Task created successfully",
+    "task": {
+      "id": "9f8e7d6c-5b4a-3210-fedc-ba9876543210",
+      "projectId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "title": "Implement OAuth2 Login Flow",
+      "description": "Add Google and GitHub social login buttons",
+      "status": "TODO",
+      "dueDate": "2026-11-25T18:00:00.000Z",
+      "createdAt": "2026-11-17T10:45:00.000Z",
+      "updatedAt": "2026-11-17T10:45:00.000Z"
+    }
+  }
+  ```
+
+---
+
+##### `GET /api/projects/:projectId/tasks`
+Retrieves tasks for a project with optional query filtering and sorting.
+
+- **Query Parameters:**
+  - `status`: Optional filter (`ALL`, `TODO`, `IN_PROGRESS`, `DONE`).
+  - `sortBy`: Optional sort field (`createdAt`, `dueDate`, `title`, `status`). Default: `createdAt`.
+  - `sortOrder`: Sort direction (`asc`, `desc`). Default: `desc`.
+- **Example Request:** `GET /api/projects/a1b2c3d4.../tasks?status=IN_PROGRESS&sortBy=dueDate&sortOrder=asc`
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "tasks": [ ... ],
+    "counts": {
+      "total": 5,
+      "todo": 2,
+      "inProgress": 2,
+      "done": 1
+    }
+  }
+  ```
+
+---
+
+##### `GET /api/tasks/:id`
+Retrieves a single task by its UUID.
+
+- **Success Response (`200 OK`):** Returns task object.
+- **Error Response:** `404 Not Found` if task does not exist or user is unauthorized.
+
+---
+
+##### `PATCH /api/tasks/:id`
+Updates task details, moves tasks between workflow statuses (`TODO` → `IN_PROGRESS` → `DONE`), or updates due dates.
+
+- **Request Body (Any subset):**
+  ```json
+  {
+    "status": "IN_PROGRESS",
+    "dueDate": "2026-11-28T00:00:00.000Z"
+  }
+  ```
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Task updated successfully",
+    "task": { ... }
+  }
+  ```
+
+---
+
+##### `DELETE /api/tasks/:id`
+Deletes the specified task.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "message": "Task deleted successfully"
+  }
+  ```
+
+---
+
+#### 4. Dashboard Analytics Endpoint (`/api/dashboard`)
+
+##### `GET /api/dashboard`
+Computes real-time aggregated metrics across all projects and tasks owned by the authenticated user in a single optimized transaction.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "success": true,
+    "stats": {
+      "totalProjects": 6,
+      "totalTasks": 24,
+      "todoTasks": 8,
+      "inProgressTasks": 6,
+      "doneTasks": 10,
+      "completionRate": 42
+    },
+    "recentProjects": [
+      {
+        "id": "a1b2c3d4-...",
+        "title": "Mobile App Redesign",
+        "description": "Complete UI/UX overhaul",
+        "createdAt": "2026-11-17T10:15:00.000Z",
+        "_count": { "tasks": 4 }
+      }
+    ],
+    "recentTasks": [
+      {
+        "id": "9f8e7d6c-...",
+        "title": "Implement OAuth2 Login Flow",
+        "status": "IN_PROGRESS",
+        "dueDate": "2026-11-25T18:00:00.000Z",
+        "createdAt": "2026-11-17T10:45:00.000Z",
+        "project": {
+          "id": "a1b2c3d4-...",
+          "title": "Mobile App Redesign"
+        }
+      }
+    ]
+  }
+  ```
+
+---
+
+#### 5. Health & Monitoring Endpoint (`/api/health`)
+
+##### `GET /api/health`
+Public liveness and database probe for container orchestrators, load balancers, and uptime monitors.
+
+- **Success Response (`200 OK`):**
+  ```json
+  {
+    "status": "ok",
+    "uptime": 1420.52,
+    "timestamp": "2026-11-17T11:00:00.000Z",
+    "database": "connected"
+  }
+  ```
+
+---
+
+## 🛠️ Complete Technology Stack
+
+| Layer | Technology | Version | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Frontend Framework** | Next.js (App Router) | 15.1.7 | Server & Client Components, file-based routing |
+| **UI Library** | React | 18.3.1 | Component-based reactive interfaces |
+| **Language** | TypeScript | 5.7.x | Strict end-to-end type safety |
+| **State Management** | Redux Toolkit | 2.5.x | Centralized client state & slices |
+| **Data Fetching / Cache**| RTK Query | 2.5.x | Declarative queries, automatic tag invalidation, caching |
+| **Styling & Design** | Tailwind CSS | 3.4.x | Utility-first styling with custom Indigo SaaS tokens |
+| **Iconography** | Lucide React | 0.475.x | Modern SVG icon system |
+| **Backend Framework** | Express.js | 4.21.x | REST API server & middleware routing |
+| **Runtime** | Node.js | >= 18.x (tested on 26.x) | High-performance asynchronous execution |
+| **Database** | PostgreSQL | >= 14.x | Relational ACID database |
+| **ORM** | Prisma ORM | 6.4.x | Type-safe migrations, queries & schema modeling |
+| **Validation** | Zod | 3.24.x | Runtime request body & environment variable validation |
+| **Authentication** | jsonwebtoken | 9.0.x | HMAC-SHA256 stateless token signing & verification |
+| **Password Security** | bcrypt | 5.1.x | Secure password hashing (10 salt rounds) |
+| **Cookie Parsing** | cookie-parser | 1.4.x | Express HttpOnly cookie parsing middleware |
+
+---
+
+## 🗄️ Database Architecture & Prisma Schema
+
+The PostgreSQL database is managed via Prisma ORM (`backend/prisma/schema.prisma`).
+
+```mermaid
+erDiagram
+    USER ||--o{ PROJECT : "owns (1:N)"
+    PROJECT ||--o{ TASK : "contains (1:N)"
+
+    USER {
+        string id PK "cuid/uuid"
+        string name
+        string email UK
+        string password "bcrypt hash"
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    PROJECT {
+        string id PK "uuid"
+        string userId FK "References User.id (CASCADE)"
+        string title
+        string description
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    TASK {
+        string id PK "uuid"
+        string projectId FK "References Project.id (CASCADE)"
+        string title
+        string description
+        enum status "TODO | IN_PROGRESS | DONE"
+        datetime dueDate
+        datetime createdAt
+        datetime updatedAt
+    }
+```
+
+### Relational Integrity & Performance Rules
+1. **User → Project Cascade:** When a user account is deleted, all their projects are automatically removed (`onDelete: Cascade`).
+2. **Project → Task Cascade:** When a project is deleted, all associated tasks are automatically purged (`onDelete: Cascade`), preventing orphaned database records.
+3. **Database Indexes:**
+   - `User.email`: Unique B-Tree index for $O(1)$ authentication lookups.
+   - `Project.userId`: Index for instant project filtering by owner.
+   - `Task.projectId`: Index for fast project-task relational queries.
+   - `Task.status`: Index for high-speed status filtering (`TODO`, `IN_PROGRESS`, `DONE`).
+   - `Task.dueDate`: Index for chronological sort and overdue detection.
+
+---
+
+## 🎨 Frontend Architecture & SaaS Design System
+
+### 1. State Management & RTK Query Cache Invalidation
+
+The frontend utilizes Redux Toolkit and RTK Query (`frontend/src/store/api/baseApi.ts`) with tag-based cache management:
+
+- **Tags:** `['Auth', 'Project', 'Task', 'Dashboard']`
+- **Cache Lifecycle:**
+  - Creating, updating, or deleting a Project invalidates `['Project', 'Dashboard']`.
+  - Creating, moving, or deleting a Task invalidates `['Task', 'Project', 'Dashboard']`.
+  - The dashboard metrics and project cards instantly update across the application without manual page reloading.
+
+### 2. Design System Tokens (Indigo Palette)
+
+The UI was redesigned into an executive-grade SaaS dashboard utilizing an Indigo color hierarchy:
+
+- **Primary Accent:** `indigo-600` (`#4F46E5`), `indigo-700` (`#4338CA`), `indigo-500` (`#6366F1`)
+- **Dashboard Sidebar:** Dark Navy with soft Indigo accent highlights (`bg-[#0B0F19]`, `border-indigo-950/40`)
+- **Topbar & Header:** Clean white with subtle border separation (`border-slate-200/80`)
+- **Metric Cards:** Dual-tone soft gradient backgrounds (`from-indigo-50/50 to-white`, `from-emerald-50/50`, `from-amber-50/50`)
+- **Typography:** Inter font family with crisp optical sizing, deliberate font weights (`font-semibold`, `font-bold`), and tabular numerals.
+
+---
+
+## 🏗️ Monorepo Directory Structure
+
+```
+Mini Project Management System/
 │
-├── frontend/                     # Next.js Application
-│   ├── public/                   # Static assets & robots.txt
+├── frontend/                         # Next.js 15 Application
+│   ├── public/                       # Static public assets
 │   ├── src/
-│   │   ├── app/                  # Next.js App Router
-│   │   │   ├── layout.tsx        # Root layout (Redux Provider + AuthInitializer)
-│   │   │   ├── page.tsx          # Homepage (server component)
-│   │   │   ├── login/            # Login page
-│   │   │   │   ├── page.tsx      # Server component wrapper
-│   │   │   │   └── LoginForm.tsx # Client component (form + RTK Query)
-│   │   │   ├── signup/           # Signup page
-│   │   │   │   ├── page.tsx      # Server component wrapper
-│   │   │   │   └── SignupForm.tsx # Client component (form + RTK Query)
-│   │   │   ├── dashboard/        # Protected dashboard page
-│   │   │   │   ├── page.tsx      # Server component wrapper
-│   │   │   │   └── DashboardContent.tsx # Client component (auth guard + stats + recent projects)
-│   │   │   └── projects/         # Projects module
-│   │   │       ├── page.tsx      # Server component wrapper
-│   │   │       ├── ProjectsContent.tsx # Client component (listing, search, filter)
-│   │   │       └── [id]/         # Project details page
-│   │   │           ├── page.tsx  # Server component wrapper
-│   │   │           └── ProjectDetailsContent.tsx # Client component (project details + task management)
-│   │   ├── components/           # Reusable UI components
-│   │   │   ├── auth/             # Auth-specific components
-│   │   │   │   ├── AuthInitializer.tsx  # Restores auth session on page load
-│   │   │   │   ├── ProtectedRoute.tsx   # Redirects unauthenticated users to /login
-│   │   │   │   └── PublicOnlyRoute.tsx  # Redirects authenticated users to /dashboard
-│   │   │   ├── projects/         # Project management components
-│   │   │   │   ├── CreateProjectModal.tsx # Reusable modal for creating projects
-│   │   │   │   ├── EditProjectModal.tsx   # Modal for editing project title/desc
-│   │   │   │   ├── DeleteProjectModal.tsx # Confirmation dialog for project deletion
-│   │   │   │   ├── ProjectCard.tsx        # Individual project card with actions
-│   │   │   │   └── ProjectSkeleton.tsx    # Loading skeletons for project grids
-│   │   │   ├── tasks/            # Task management components (Phase 4)
-│   │   │   │   ├── TaskStatusBadge.tsx    # Clean badges for TODO, IN_PROGRESS, DONE
-│   │   │   │   ├── TaskDueDateBadge.tsx   # Overdue, Today, Upcoming, and Done badges
-│   │   │   │   ├── TaskStatusDropdown.tsx # Inline status switcher dropdown
-│   │   │   │   ├── TaskCard.tsx           # Individual task card with actions
-│   │   │   │   ├── TaskFilters.tsx        # Status tabs, search, due date & sort dropdowns
-│   │   │   │   ├── CreateTaskModal.tsx    # Modal form for creating tasks
-│   │   │   │   ├── EditTaskModal.tsx      # Modal form for editing tasks and due dates
-│   │   │   │   ├── DeleteTaskDialog.tsx   # Confirmation dialog for task deletion
-│   │   │   │   ├── EmptyTasks.tsx         # Empty state for zero tasks or filter empty
-│   │   │   │   └── TaskSkeleton.tsx       # Loading skeleton cards for tasks
-│   │   │   ├── common/           # Generic widgets
-│   │   │   ├── home/             # Homepage-specific components
-│   │   │   │   └── AuthHeroActions.tsx  # CTA buttons on homepage
-│   │   │   └── layout/           # Shared layout components
-│   │   │       └── Navbar.tsx    # Auth-aware navigation bar
-│   │   ├── features/             # Feature-sliced modules
-│   │   │   ├── auth/             # Authentication feature
-│   │   │   │   ├── authTypes.ts  # TypeScript interfaces
-│   │   │   │   ├── authSlice.ts  # Redux slice (setCredentials, clearCredentials)
-│   │   │   │   ├── authApi.ts    # RTK Query endpoints
-│   │   │   │   └── index.ts      # Public exports
-│   │   │   ├── projects/         # Project management feature
-│   │   │   │   ├── projectTypes.ts # Project, Request & Response interfaces
-│   │   │   │   ├── projectApi.ts   # RTK Query endpoints with tag invalidation
-│   │   │   │   ├── projectSlice.ts # Redux UI state (search, sorting)
-│   │   │   │   └── index.ts        # Public exports
-│   │   │   └── tasks/            # Task management feature (Phase 4)
-│   │   │       ├── taskTypes.ts  # Task, TaskStatus, TaskCounts, Query & Request interfaces
-│   │   │       ├── taskApi.ts    # RTK Query endpoints (getTasks, create, update, delete)
-│   │   │       └── index.ts      # Public exports
-│   │   ├── store/                # Centralized Redux store
-│   │   │   ├── store.ts          # Store configuration (auth, projectsUI, baseApi)
-│   │   │   ├── provider.tsx      # Client-side Redux Provider wrapper
-│   │   │   └── api/
-│   │   │       └── baseApi.ts    # Central RTK Query base API (credentials: include)
-│   │   ├── hooks/                # Typed Redux hooks (useAppDispatch, useAppSelector)
-│   │   ├── lib/                  # Helper utilities
-│   │   └── types/                # Shared TypeScript types & interfaces
-│   ├── .env.example              # Environment variables template
-│   ├── next.config.mjs           # Next.js configuration
-│   ├── tailwind.config.ts        # Tailwind CSS configuration
-│   ├── tsconfig.json             # Frontend TypeScript configuration
-│   └── package.json              # Frontend dependencies and scripts
+│   │   ├── app/                      # Next.js App Router
+│   │   │   ├── layout.tsx            # Global layout with Redux Provider & AuthInitializer
+│   │   │   ├── page.tsx              # Clean public SaaS landing page
+│   │   │   ├── login/page.tsx        # Login page wrapper
+│   │   │   ├── login/LoginForm.tsx   # Login client form with RTK Query
+│   │   │   ├── signup/page.tsx       # Signup page wrapper
+│   │   │   ├── signup/SignupForm.tsx # Signup client form
+│   │   │   ├── dashboard/page.tsx    # Dashboard server component
+│   │   │   ├── dashboard/DashboardContent.tsx # Premium SaaS Dashboard view
+│   │   │   └── projects/             # Projects module (Listing & Details)
+│   │   ├── components/               # Reusable UI components
+│   │   │   ├── auth/                 # AuthInitializer & route protection guards
+│   │   │   ├── layout/               # Topbar, Sidebar, SaaS Navigation
+│   │   │   ├── projects/             # Project cards, creation modals, delete dialogs
+│   │   │   └── tasks/                # Task cards, badges, filter bar, modals
+│   │   ├── features/                 # RTK Query APIs & Redux slices
+│   │   │   ├── auth/                 # authApi, authSlice, authTypes
+│   │   │   ├── projects/             # projectApi, projectSlice, projectTypes
+│   │   │   └── tasks/                # taskApi, taskSlice, taskTypes
+│   │   └── store/                    # Central Redux store & baseApi
+│   ├── package.json
+│   └── tailwind.config.ts
 │
-├── backend/                      # Express.js REST API
+├── backend/                          # Express.js REST API
 │   ├── prisma/
-│   │   └── schema.prisma         # Prisma data models & PostgreSQL schema
+│   │   └── schema.prisma             # PostgreSQL schema definition
 │   ├── src/
-│   │   ├── config/               # Environment & database singleton configurations
-│   │   │   ├── database.ts       # Prisma Client singleton
-│   │   │   └── env.ts            # Zod-validated environment variables
-│   │   ├── controllers/          # Request handlers
-│   │   │   ├── health.controller.ts
-│   │   │   ├── auth.controller.ts    # register, login, getMe, logout
-│   │   │   ├── project.controller.ts # create, getProjects, getProjectById, update, delete
-│   │   │   └── task.controller.ts    # createTask, getProjectTasks, getTaskById, updateTask, deleteTask
-│   │   ├── routes/               # API route definitions
-│   │   │   ├── index.ts          # Root API router (/api)
-│   │   │   ├── health.routes.ts  # Health check routes (/api/health)
-│   │   │   ├── auth.routes.ts    # Auth routes (/api/auth)
-│   │   │   ├── project.routes.ts # Project routes (/api/projects, /api/projects/:id/tasks)
-│   │   │   └── task.routes.ts    # Task routes (/api/tasks/:id)
-│   │   ├── services/             # Business logic layer
-│   │   │   ├── auth.service.ts       # User registration, verification, token generation
-│   │   │   ├── project.service.ts    # Project CRUD with strict ownership validation
-│   │   │   └── task.service.ts       # Task CRUD, status aggregation, filtering & sorting
-│   │   ├── validators/           # Zod validation schemas
-│   │   │   ├── auth.validator.ts     # Auth schemas
-│   │   │   ├── project.validator.ts  # Project schemas
-│   │   │   └── task.validator.ts     # Task CRUD, status, date filter & sort schemas
-│   │   ├── middlewares/          # Centralized Express middlewares
-│   │   │   ├── auth.middleware.ts      # JWT HttpOnly cookie authentication
-│   │   │   ├── error.middleware.ts     # Central error handler
-│   │   │   └── notFound.middleware.ts  # 404 Route handler
-│   │   ├── services/             # Business logic layer
-│   │   │   ├── auth.service.ts        # AuthService
-│   │   │   └── project.service.ts     # ProjectService (with ownership verification)
-│   │   ├── validators/           # Zod schema validation rules
-│   │   │   ├── auth.validator.ts      # registerSchema, loginSchema
-│   │   │   └── project.validator.ts   # createProjectSchema, updateProjectSchema
-│   │   ├── utils/                # Utility and helper functions
-│   │   │   ├── jwt.ts                 # generateToken, verifyToken
-│   │   │   ├── password.ts            # hashPassword, comparePassword (bcrypt)
-│   │   │   └── errors.ts              # HttpError class
-│   │   ├── types/
-│   │   │   └── express.d.ts           # Express Request augmentation (user field)
-│   │   ├── app.ts                # Express application factory & middleware setup
-│   │   └── server.ts             # Server entry point & graceful shutdown
-│   ├── .env.example              # Backend environment template
-│   ├── tsconfig.json             # Backend TypeScript configuration
-│   └── package.json              # Backend dependencies and scripts
+│   │   ├── config/                   # Prisma database client & Zod env validation
+│   │   ├── controllers/              # Auth, Project, Task, Dashboard, Health controllers
+│   │   ├── middlewares/              # JWT auth, centralized error, 404 handler
+│   │   ├── routes/                   # Modular route declarations
+│   │   ├── services/                 # Core business logic & database queries
+│   │   ├── utils/                    # JWT generator, bcrypt helpers, HttpError class
+│   │   ├── validators/               # Zod validation schemas
+│   │   ├── app.ts                    # Express application setup & middleware stack
+│   │   └── server.ts                 # Server entry point & graceful shutdown
+│   ├── package.json
+│   └── tsconfig.json
 │
-├── .gitignore                    # Git ignore file for monorepo
-├── package.json                  # Root monorepo scripts
-└── README.md                     # Comprehensive project documentation
+├── scripts/                          # Utility & build scripts
+│   └── generate-pdf.js               # Node.js PDF documentation generator
+│
+├── Mini_Project_Manager_Documentation.pdf # Complete PDF Documentation
+├── package.json                      # Monorepo root scripts
+└── README.md                         # This file
 ```
-
----
-
-## 📋 Prerequisites
-
-Before setting up the project, ensure you have the following installed:
-
-- **Node.js**: `v18.x` or higher (tested with Node `v26.x`)
-- **npm**: `v9.x` or higher (tested with npm `v11.x`)
-- **PostgreSQL**: `v14.x` or higher running locally or hosted on cloud (e.g. Supabase, Neon, AWS RDS)
 
 ---
 
@@ -194,530 +675,115 @@ Before setting up the project, ensure you have the following installed:
 
 ### 1. Backend (`backend/.env`)
 
-Copy `backend/.env.example` to `backend/.env`:
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-Configure the following variables:
+Create `backend/.env` with the following parameters:
 
 ```env
+# Server Port
 PORT=5000
+
+# Environment Mode
 NODE_ENV=development
-DATABASE_URL="postgresql://username:password@localhost:5432/mini_project_manager?schema=public"
-JWT_SECRET="your-super-secret-jwt-key-change-in-production"
-JWT_EXPIRES_IN=1d
+
+# PostgreSQL Connection String
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/mini_project_manager?schema=public"
+
+# JWT Secret Key (Generate a secure random string for production)
+JWT_SECRET="super-secure-jwt-secret-key-at-least-32-chars-long"
+
+# JWT Expiration Window
+JWT_EXPIRES_IN="7d"
+
+# Cookie Expiration in Days
+COOKIE_EXPIRES_IN_DAYS=7
+
+# Allowed Frontend URL for CORS
 FRONTEND_URL="http://localhost:3000"
 ```
 
 ### 2. Frontend (`frontend/.env.local`)
 
-Copy `frontend/.env.example` to `frontend/.env.local`:
-
-```bash
-cp frontend/.env.example frontend/.env.local
-```
-
-Configure the API base URL:
+Create `frontend/.env.local`:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000/api
+# Backend REST API Base URL
+NEXT_PUBLIC_API_URL="http://localhost:5000/api"
 ```
 
 ---
 
-## 🗄️ Database & Prisma Setup
+## 🚀 Installation & Running Guide
 
-The Prisma schema (`backend/prisma/schema.prisma`) defines three interconnected models:
+### 1. Install Dependencies
 
-- **User**: Authentication and profile data (`id`, `name`, `email`, `password`, `createdAt`, `updatedAt`).
-- **Project**: User-owned projects (`id`, `userId`, `title`, `description`, `createdAt`, `updatedAt`).
-  - Cascades on user deletion (`onDelete: Cascade`).
-  - Indexed by `userId`.
-- **Task**: Project-specific task items (`id`, `projectId`, `title`, `description`, `status`, `dueDate`, `createdAt`, `updatedAt`).
-  - Status enum: `TODO`, `IN_PROGRESS`, `DONE`.
-  - Cascades on project deletion (`onDelete: Cascade`).
-  - Indexed by `projectId`, `status`, and `dueDate`.
-
-### Database Commands:
+Install all root, backend, and frontend dependencies:
 
 ```bash
-# Generate Prisma Client
-npm --prefix backend run prisma:generate
-
-# Run Database Migrations (requires PostgreSQL running with valid DATABASE_URL)
-npm --prefix backend run prisma:migrate
-```
-
----
-
-## 🚀 Installation & Running the Application
-
-### 1. Install All Dependencies
-
-From the repository root:
-
-```bash
+# Monorepo root command
 npm run install:all
 ```
 
-Or individually:
+Or install in each directory individually:
 
 ```bash
 cd backend && npm install
 cd ../frontend && npm install
 ```
 
-### 2. Start the Backend API
+### 2. Configure Database & Run Migrations
+
+Ensure your PostgreSQL instance is running and the database specified in `DATABASE_URL` is accessible:
 
 ```bash
-npm run dev:backend
+# Generate Prisma Client
+npm --prefix backend run prisma:generate
+
+# Execute Database Migrations
+npm --prefix backend run prisma:migrate
 ```
 
-The Express API will be running at:
-- **Base URL:** `http://localhost:5000`
-- **Health Check:** `http://localhost:5000/api/health`
+### 3. Start the Development Servers
 
-### 3. Start the Frontend Application
-
-In a separate terminal:
+Start the backend and frontend in separate terminals:
 
 ```bash
+# Terminal 1 — Start Backend Express API (Runs on http://localhost:5000)
+npm run dev:backend
+
+# Terminal 2 — Start Frontend Next.js App (Runs on http://localhost:3000)
 npm run dev:frontend
 ```
 
-The Next.js application will be available at:
-- **Frontend URL:** `http://localhost:3000`
-
----
-
-## 📁 Project Management System (Phase 3)
-
-The Project Management module provides complete CRUD functionality with strict user isolation and ownership verification.
-
-### Endpoints Overview
-
-All endpoints are protected by the JWT authentication middleware (`authenticateToken`).
-
-| Method | Endpoint | Description | Status | Auth Required |
-| :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/projects` | Create a new project | `201 Created` | ✅ |
-| `GET` | `/api/projects` | Get all projects belonging to user | `200 OK` | ✅ |
-| `GET` | `/api/projects/:id` | Get single project by ID | `200 OK` | ✅ |
-| `PATCH` | `/api/projects/:id` | Update project title / description | `200 OK` | ✅ |
-| `DELETE` | `/api/projects/:id` | Delete project (cascades tasks) | `200 OK` | ✅ |
-
-### Security & Ownership Rules
-
-- **Zero-Trust Client ID:** `userId` is extracted exclusively from `req.user.id` (set by `authenticateToken`). Payloads containing `userId` are rejected or ignored.
-- **Strict Query Ownership:** Every `findFirst`, `update`, and `delete` operation includes `where: { id: projectId, userId: authenticatedUserId }`.
-- **Cross-User Protection:** If User A attempts to view, update, or delete a project belonging to User B, the backend returns a generic `404 Not Found` to prevent project ID enumeration.
-
-### API Details
-
-#### `POST /api/projects`
-
-Create a new project.
-
-**Request:**
-```json
-{
-  "title": "E-commerce Platform",
-  "description": "Full-stack online store with payment processing"
-}
-```
-
-**Success Response (`201 Created`):**
-```json
-{
-  "success": true,
-  "message": "Project created successfully",
-  "project": {
-    "id": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-    "userId": "d748f341-a18d-4f11-9a74-9f79ce1c27bf",
-    "title": "E-commerce Platform",
-    "description": "Full-stack online store with payment processing",
-    "createdAt": "2026-11-17T03:11:45.000Z",
-    "updatedAt": "2026-11-17T03:11:45.000Z",
-    "_count": { "tasks": 0 }
-  }
-}
-```
-
-#### `GET /api/projects`
-
-Fetch all projects belonging to the authenticated user.
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "projects": [
-    {
-      "id": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-      "userId": "d748f341-a18d-4f11-9a74-9f79ce1c27bf",
-      "title": "E-commerce Platform",
-      "description": "Full-stack online store with payment processing",
-      "createdAt": "2026-11-17T03:11:45.000Z",
-      "updatedAt": "2026-11-17T03:11:45.000Z",
-      "_count": { "tasks": 0 }
-    }
-  ]
-}
-```
-
-#### `GET /api/projects/:id`
-
-Fetch details of a single project.
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "project": {
-    "id": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-    "userId": "d748f341-a18d-4f11-9a74-9f79ce1c27bf",
-    "title": "E-commerce Platform",
-    "description": "Full-stack online store with payment processing",
-    "createdAt": "2026-11-17T03:11:45.000Z",
-    "updatedAt": "2026-11-17T03:11:45.000Z",
-    "_count": { "tasks": 0 }
-  }
-}
-```
-
-#### `PATCH /api/projects/:id`
-
-Partial update of project title and/or description.
-
-**Request:**
-```json
-{
-  "title": "Updated E-commerce Platform",
-  "description": "Updated project description"
-}
-```
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "message": "Project updated successfully",
-  "project": {
-    "id": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-    "userId": "d748f341-a18d-4f11-9a74-9f79ce1c27bf",
-    "title": "Updated E-commerce Platform",
-    "description": "Updated project description",
-    "createdAt": "2026-11-17T03:11:45.000Z",
-    "updatedAt": "2026-11-17T03:12:00.000Z"
-  }
-}
-```
-
-#### `DELETE /api/projects/:id`
-
-Delete project and its cascade-related tasks.
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "message": "Project deleted successfully"
-}
-```
-
----
-
-## 📋 Task Management Module (Phase 4)
-
-Phase 4 delivers an end-to-end task tracking system with real-time status transitions, due date monitoring, flexible filtering, and database-level ownership isolation.
-
-### Task Data Model
-
-```prisma
-model Task {
-  id          String     @id @default(uuid())
-  projectId   String
-  title       String
-  description String?
-  status      TaskStatus @default(TODO)
-  dueDate     DateTime?
-
-  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  @@index([projectId])
-  @@index([status])
-  @@index([dueDate])
-}
-
-enum TaskStatus {
-  TODO
-  IN_PROGRESS
-  DONE
-}
-```
-
-### Task API Endpoints
-
-All task endpoints require authentication via HttpOnly JWT cookie.
-
-#### 1. `POST /api/projects/:projectId/tasks`
-
-Create a new task inside an existing project owned by the authenticated user.
-
-**Request Body:**
-```json
-{
-  "title": "Build User Authentication Flow",
-  "description": "Implement JWT HttpOnly cookies and bcrypt hashing",
-  "status": "TODO",
-  "dueDate": "2026-11-20T00:00:00.000Z"
-}
-```
-*Note: `title` is mandatory (1-200 chars). `description`, `status` (default: `TODO`), and `dueDate` are optional.*
-
-**Success Response (`201 Created`):**
-```json
-{
-  "success": true,
-  "message": "Task created successfully",
-  "task": {
-    "id": "7fa1d293-1996-41f2-95f0-6a7cb8d3c162",
-    "projectId": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-    "title": "Build User Authentication Flow",
-    "description": "Implement JWT HttpOnly cookies and bcrypt hashing",
-    "status": "TODO",
-    "dueDate": "2026-11-20T00:00:00.000Z",
-    "createdAt": "2026-11-17T03:30:00.000Z",
-    "updatedAt": "2026-11-17T03:30:00.000Z"
-  }
-}
-```
-
-#### 2. `GET /api/projects/:projectId/tasks`
-
-Get all tasks for a project with optional filtering, sorting, and aggregated status counts.
-
-**Query Parameters:**
-| Parameter | Type | Allowed Values | Default | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `status` | string | `ALL`, `TODO`, `IN_PROGRESS`, `DONE` | `ALL` | Filter by task status |
-| `dateFilter` | string | `ALL`, `OVERDUE`, `TODAY`, `UPCOMING` | `ALL` | Preset due date filtering |
-| `dueDateFrom` | string | ISO Date / YYYY-MM-DD | — | Custom range start date |
-| `dueDateTo` | string | ISO Date / YYYY-MM-DD | — | Custom range end date |
-| `sortBy` | string | `dueDate`, `status`, `createdAt`, `title` | `dueDate` | Sorting field (null due dates appear last) |
-| `order` | string | `asc`, `desc` | `asc` | Sort direction (`asc`: TODO → IN_PROGRESS → DONE) |
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "tasks": [
-    {
-      "id": "7fa1d293-1996-41f2-95f0-6a7cb8d3c162",
-      "projectId": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-      "title": "Build User Authentication Flow",
-      "description": "Implement JWT HttpOnly cookies and bcrypt hashing",
-      "status": "TODO",
-      "dueDate": "2026-11-20T00:00:00.000Z",
-      "createdAt": "2026-11-17T03:30:00.000Z",
-      "updatedAt": "2026-11-17T03:30:00.000Z"
-    }
-  ],
-  "counts": {
-    "total": 1,
-    "todo": 1,
-    "inProgress": 0,
-    "done": 0
-  }
-}
-```
-
-#### 3. `GET /api/tasks/:id`
-
-Retrieve details of a single task. Returns `404 Not Found` if the task does not exist or belongs to another user's project.
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "task": {
-    "id": "7fa1d293-1996-41f2-95f0-6a7cb8d3c162",
-    "projectId": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-    "title": "Build User Authentication Flow",
-    "description": "Implement JWT HttpOnly cookies and bcrypt hashing",
-    "status": "TODO",
-    "dueDate": "2026-11-20T00:00:00.000Z",
-    "createdAt": "2026-11-17T03:30:00.000Z",
-    "updatedAt": "2026-11-17T03:30:00.000Z"
-  }
-}
-```
-
-#### 4. `PATCH /api/tasks/:id`
-
-Update task title, description, status, or due date. Setting `dueDate: null` removes the due date.
-
-**Request Body:**
-```json
-{
-  "status": "IN_PROGRESS",
-  "dueDate": null
-}
-```
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "message": "Task updated successfully",
-  "task": {
-    "id": "7fa1d293-1996-41f2-95f0-6a7cb8d3c162",
-    "projectId": "e9b2512f-6831-4ce8-b5b0-dfb65cf11f93",
-    "title": "Build User Authentication Flow",
-    "description": "Implement JWT HttpOnly cookies and bcrypt hashing",
-    "status": "IN_PROGRESS",
-    "dueDate": null,
-    "createdAt": "2026-11-17T03:30:00.000Z",
-    "updatedAt": "2026-11-17T03:35:00.000Z"
-  }
-}
-```
-
-#### 5. `DELETE /api/tasks/:id`
-
-Delete a task permanently.
-
-**Success Response (`200 OK`):**
-```json
-{
-  "success": true,
-  "message": "Task deleted successfully"
-}
-```
-
----
-
-## 🧪 Phase 4 Automated Verification & Test Suite
-
-All 20 Phase 4 test cases were executed and passed against the live PostgreSQL database:
-
-| # | Test Scenario | Verified Behavior | Result |
-| :--- | :--- | :--- | :--- |
-| 1 | Create task with valid data | Successfully created in project | ✅ PASS (201 Created) |
-| 2 | Reject task without title | Schema validation catches missing title | ✅ PASS (400 Bad Request) |
-| 3 | Reject task with empty title | Validation catches empty string | ✅ PASS (400 Bad Request) |
-| 4 | Get all tasks with status counts | Returns tasks array & counts (`total`, `todo`, `inProgress`, `done`) | ✅ PASS (200 OK) |
-| 5 | Get single task by ID | Returns task object | ✅ PASS (200 OK) |
-| 6 | Change task status to IN_PROGRESS | Updates status cleanly | ✅ PASS (200 OK) |
-| 7 | Change task status to DONE | Updates status cleanly | ✅ PASS (200 OK) |
-| 8 | Update task description | Updates description without affecting other fields | ✅ PASS (200 OK) |
-| 9 | Nullify / clear due date | Sets `dueDate` to `null` in PostgreSQL | ✅ PASS (200 OK) |
-| 10 | Reject empty PATCH request | Rejects update with no fields | ✅ PASS (400 Bad Request) |
-| 11 | Filter tasks by status (`TODO`) | Only returns TODO tasks | ✅ PASS (200 OK) |
-| 12 | Filter tasks by date (`OVERDUE`) | Only returns past-due, incomplete tasks | ✅ PASS (200 OK) |
-| 13 | Filter tasks by date (`UPCOMING`) | Only returns future-due tasks | ✅ PASS (200 OK) |
-| 14 | Sort tasks by `dueDate` `asc` | Null due dates correctly placed last | ✅ PASS (200 OK) |
-| 15 | Sort tasks by `status` `asc` | Ordered strictly: `TODO` → `IN_PROGRESS` → `DONE` | ✅ PASS (200 OK) |
-| 16 | Reject unauthenticated task access | Protected by JWT HttpOnly auth middleware | ✅ PASS (401 Unauthorized) |
-| 17 | Prevent User B from creating task in User A's project | Ownership check on parent project blocks access | ✅ PASS (404 Not Found) |
-| 18 | Prevent User B from listing User A's tasks | Ownership check on parent project blocks access | ✅ PASS (404 Not Found) |
-| 19 | Prevent User B from updating User A's task | Direct ownership verification blocks access | ✅ PASS (404 Not Found) |
-| 20 | Prevent User B from deleting User A's task | Direct ownership verification blocks access | ✅ PASS (404 Not Found) |
-
----
-
-## 🔐 Authentication System (Phase 2)
-
-The authentication system uses **JWT stored in HttpOnly cookies** — the token is never exposed to JavaScript, localStorage, or the JSON response body.
-
-### Security Architecture
-
-| Feature | Implementation |
-| :--- | :--- |
-| **Password hashing** | bcrypt with 12 salt rounds |
-| **Token transport** | HttpOnly cookie (not `Authorization` header, not localStorage) |
-| **Cookie config** | `httpOnly: true`, `sameSite: lax`, `secure: true` in production |
-| **Token expiry** | Configurable via `JWT_EXPIRES_IN` env variable (default: `1d`) |
-| **Validation** | Zod schemas on all auth endpoints |
-| **Email** | Normalized to lowercase and trimmed on registration & login |
-| **Session restore** | `GET /api/auth/me` called on app load by `AuthInitializer` |
-
-### Auth API Endpoints
-
-- `POST /api/auth/register` — Register a new user account (201 Created)
-- `POST /api/auth/login` — Login and receive HttpOnly cookie (200 OK)
-- `GET /api/auth/me` — Retrieve current authenticated user (200 OK)
-- `POST /api/auth/logout` — Clear auth cookie (200 OK)
-
----
-
-## 🧪 Automated Verification & Postman Tests
-
-All 17 Phase 3 test cases were executed and passed against live PostgreSQL database:
-
-| # | Test Case | Result |
-| :--- | :--- | :--- |
-| 1 | Create project with valid data | ✅ PASS (201 Created) |
-| 2 | Create project without title | ✅ PASS (400 Bad Request) |
-| 3 | Create project with empty title | ✅ PASS (400 Bad Request) |
-| 4 | Get all projects for authenticated user | ✅ PASS (200 OK) |
-| 4b | User B sees 0 projects (Isolation) | ✅ PASS (200 OK, empty array) |
-| 5 | Get single existing project | ✅ PASS (200 OK) |
-| 6 | Get invalid project ID format | ✅ PASS (400 Bad Request) |
-| 7 | Update project title | ✅ PASS (200 OK) |
-| 8 | Update project description | ✅ PASS (200 OK) |
-| 9 | Update both fields | ✅ PASS (200 OK) |
-| 10 | Send empty PATCH request | ✅ PASS (400 Bad Request) |
-| 11 | Access API without authentication | ✅ PASS (401 Unauthorized) |
-| 12 | User B cannot access User A's project | ✅ PASS (404 Not Found) |
-| 13 | User B cannot update User A's project | ✅ PASS (404 Not Found) |
-| 14 | User B cannot delete User A's project | ✅ PASS (404 Not Found) |
-| 15 | User A deletes own project | ✅ PASS (200 OK) |
-| 16 | Deleted project removed from database | ✅ PASS (Verified in PostgreSQL) |
-
----
-
-## 🎨 Application Integration & UI Shell (Phase 5)
-
-Phase 5 establishes a complete, cohesive SaaS experience with a unified layout, live backend dashboard metrics, toast notifications, and responsive navigation across all viewports.
-
-### 1. Global Application Layout (`AppLayout`)
-- **Desktop Sidebar (`Sidebar.tsx`):** 256px wide sticky navigation with active link highlighting, logo, quick links, user profile pill, and one-click Sign Out.
-- **Mobile Navigation Drawer (`MobileSidebar.tsx`):** Responsive slide-over drawer with backdrop blur, keyboard accessibility (`Esc` to close), and scroll locking.
-- **Top Application Header (`Header.tsx`):** Dynamic page title, mobile toggle hamburger, dynamic breadcrumb trail, and user account dropdown.
-- **Dynamic Breadcrumbs (`Breadcrumbs.tsx`):** Automatically computed trail with home icon and contextual route links.
-
-### 2. Live Dashboard API (`GET /api/dashboard`)
-- Authenticated endpoint returning real-time metrics for the authenticated user only:
-  - **Aggregated Statistics:** `totalProjects`, `totalTasks`, `todoTasks`, `inProgressTasks`, `doneTasks`, `completionRate` (percentage).
-  - **Recent Projects:** 5 most recently updated workspaces with associated task counts.
-  - **Recent Tasks:** 5 most recently active tasks across all user projects, including project name, status badge, and due date.
-  - **Task Status Overview:** Dynamic visual distribution bar showing exact task progression.
-  - **Quick Shortcuts:** Instant modal triggers for "+ Create Project" and direct navigation to all workspaces.
-
-### 3. Reusable UI Components & Toast System
-- **Toast Notifications (`ToastProvider` & `useToast()`):** Instant feedback for project creation/edits/deletions, task status changes, logins, and logouts.
-- **Unified Modals & Dialogs:** Standardized `CreateProjectModal`, `EditProjectModal`, `DeleteProjectModal`, `CreateTaskModal`, `EditTaskModal`, `DeleteTaskDialog`.
-- **Status & Due Date Badges:** Color-coded badges for statuses (`TODO`, `IN_PROGRESS`, `DONE`) and deadline urgency (`OVERDUE`, `DUE TODAY`, `UPCOMING`).
-
----
-
-## 📦 Build & Run Commands
-
-Verify production builds for both frontend and backend:
+Open your browser and navigate to:
+- **Application URL:** [http://localhost:3000](http://localhost:3000)
+- **Backend API Health:** [http://localhost:5000/api/health](http://localhost:5000/api/health)
+
+### 4. Production Build & Verification
 
 ```bash
-# Build both services
-npm run build
-
-# Build backend independently (TypeScript compile)
+# Build backend TypeScript
 npm run build:backend
 
-# Build frontend independently (Next.js production build)
+# Build frontend Next.js App
 npm run build:frontend
 ```
+
+---
+
+## 📄 PDF Documentation
+
+A complete, formatted PDF version of this documentation is available in the root repository directory:
+
+- **PDF File:** [Mini_Project_Manager_Documentation.pdf](file:///c:/Users/kushk/OneDrive/Desktop/Mini%20Project%20Management%20System/Mini_Project_Manager_Documentation.pdf)
+- **Generator Script:** `scripts/generate-pdf.js`
+
+To regenerate the PDF at any time using Node.js:
+
+```bash
+node scripts/generate-pdf.js
+```
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License. Developed for enterprise project management workflows.

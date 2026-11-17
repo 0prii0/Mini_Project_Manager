@@ -11,7 +11,8 @@
     "build": "npm run build:backend && npm run build:frontend",
     "install:frontend": "npm --prefix frontend install",
     "install:backend": "npm --prefix backend install",
-    "install:all": "npm run install:backend && npm run install:frontend"
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "generate:pdf": "node scripts/generate-pdf.js"
   },
   "keywords": [
     "nextjs",
